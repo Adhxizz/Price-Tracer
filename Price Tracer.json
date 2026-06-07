@@ -1,0 +1,378 @@
+{
+  "name": "My workflow 2",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours"
+            }
+          ]
+        }
+      },
+      "id": "9efe32f2-b3d6-4813-af21-02da28bf6bbf",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cfg-001",
+              "name": "PRODUCT_URL",
+              "value": "https://www.amazon.in/dp/B09XS7JWHH?th=1",
+              "type": "string"
+            },
+            {
+              "id": "cfg-002",
+              "name": "SHEET_ID",
+              "value": "1rCmmN0h3jTTeREeVG2GfgAYcmEJinIH2Y5Gxgsjh8x4",
+              "type": "string"
+            },
+            {
+              "id": "cfg-003",
+              "name": "TELEGRAM_CHAT_ID",
+              "value": "1444214840",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "6a0bf8b2-f3b4-4bda-be68-4901882ffa70",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        0,
+        160
+      ],
+      "notes": "✏️ Edit the three values here before activating the workflow."
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.PRODUCT_URL }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 15000
+        }
+      },
+      "id": "f16ad7ea-8e79-4a3d-bb13-575aeef6a7aa",
+      "name": "Fetch Product Page",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        0,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const html = $input.first().json.data;\nconst config = $('Config').first().json;\n\n// --- PRICE EXTRACTION ---\n// Supports Amazon India, Flipkart, and generic fallback.\n// Update the patterns below if targeting a different site.\n\nlet price = null;\nlet productName = 'Product';\n\n// Amazon India price patterns\nconst amazonPatterns = [\n  /<span class=\"a-price-whole\"[^>]*>([\\d,]+)<\\/span>/,\n  /\"priceAmount\":([\\d.]+)/,\n  /<span id=\"priceblock_ourprice\"[^>]*>[\\s\\S]*?([\\d,]+)<\\/span>/\n];\n\n// Flipkart price patterns\nconst flipkartPatterns = [\n  /<div class=\"_30jeq3 _16Jk6d\"[^>]*>.*?₹([\\d,]+)/,\n  /<div class=\"_30jeq3\"[^>]*>.*?₹([\\d,]+)/,\n  /\"selling_price\":\"([\\d,]+)\"/\n];\n\n// Generic fallback — looks for ₹ followed by numbers\nconst genericPattern = /₹\\s*([\\d,]+(?:\\.[\\d]{2})?)/;\n\n// Try Amazon\nfor (const pattern of amazonPatterns) {\n  const match = html.match(pattern);\n  if (match) {\n    price = parseFloat(match[1].replace(/,/g, ''));\n    break;\n  }\n}\n\n// Try Flipkart\nif (!price) {\n  for (const pattern of flipkartPatterns) {\n    const match = html.match(pattern);\n    if (match) {\n      price = parseFloat(match[1].replace(/,/g, ''));\n      break;\n    }\n  }\n}\n\n// Generic fallback\nif (!price) {\n  const match = html.match(genericPattern);\n  if (match) {\n    price = parseFloat(match[1].replace(/,/g, ''));\n  }\n}\n\n// Extract product title\nconst titleMatch = html.match(/<title>([^<]+)<\\/title>/) ||\n                   html.match(/id=\"productTitle\"[^>]*>\\s*([^<]+)/);\nif (titleMatch) {\n  productName = titleMatch[1].trim().substring(0, 80);\n}\n\nif (!price) {\n  throw new Error('Could not extract price from the page. Check the URL or update the CSS selectors.');\n}\n\nreturn [{\n  json: {\n    price,\n    productName,\n    url: config.PRODUCT_URL,\n    sheetId: config.SHEET_ID,\n    telegramChatId: config.TELEGRAM_CHAT_ID,\n    scrapedAt: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "0d21db00-b766-4fa9-ab39-133747bf6abe",
+      "name": "Extract Price",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/1rCmmN0h3jTTeREeVG2GfgAYcmEJinIH2Y5Gxgsjh8x4/edit",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "PriceLog",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "739babb4-1ffa-4473-b1e4-f0ed3f9d7000",
+      "name": "Read Last Price (Sheets)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.2,
+      "position": [
+        0,
+        640
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "QdOk4yScdiW9Hny3",
+          "name": "Google Sheets account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const scraped = $('Extract Price').first().json;\nconst sheetRows = $('Read Last Price (Sheets)').all();\n\n// Get last stored price (first row of the sheet)\nconst lastRow =\n  sheetRows.length > 0\n    ? sheetRows[sheetRows.length - 1].json\n    : null;\nconst lastPrice = lastRow ? parseFloat(lastRow.price) : null;\nconst currentPrice = parseFloat(scraped.price);\n\nconst dropped = lastPrice !== null && currentPrice < lastPrice;\n\nconst dropAmount = dropped\n  ? Number((lastPrice - currentPrice).toFixed(2))\n  : 0;\n\nconst dropPercent = dropped\n  ? Number((((lastPrice - currentPrice) / lastPrice) * 100).toFixed(1))\n  : 0;\n\nreturn [{\n  json: {\n    productName: scraped.productName,\n    url: scraped.url,\n    sheetId: scraped.sheetId,\n    telegramChatId: scraped.telegramChatId,\n    currentPrice,\n    lastPrice,\n    dropped,\n    dropAmount,\n    dropPercent,\n    scrapedAt: scraped.scrapedAt,\n    isFirstRun: lastPrice === null\n  }\n}];"
+      },
+      "id": "8697ef24-3dee-407c-8cb4-dc6052d631f6",
+      "name": "Compare Prices",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "cond-001",
+              "leftValue": "={{ $json.dropped }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c33078a4-ca68-4283-991c-9f25d6a4652e",
+      "name": "Price Dropped?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        0,
+        960
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Compare Prices').first().json.sheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "PriceLog",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "price": "={{ $('Compare Prices').first().json.currentPrice }}",
+            "url": "={{ $('Compare Prices').first().json.url }}",
+            "product_name ": "={{ $json.productName }}",
+            "checked_at ": "={{ $json.scrapedAt }}"
+          },
+          "matchingColumns": [
+            "url"
+          ],
+          "schema": [
+            {
+              "id": "price",
+              "displayName": "price",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "product_name ",
+              "displayName": "product_name ",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "url",
+              "displayName": "url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "checked_at ",
+              "displayName": "checked_at ",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "37c5b864-b6db-4100-8678-f7557289a8a7",
+      "name": "Update Price in Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.2,
+      "position": [
+        -176,
+        1152
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "QdOk4yScdiW9Hny3",
+          "name": "Google Sheets account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Compare Prices').first().json.telegramChatId }}",
+        "text": "=🔔 *Price Drop Alert\\!*\n\n📦 *{{ $('Compare Prices').first().json.productName.replace(/[_*\\[\\]()~`>#+\\-=|{}.!]/g, '\\\\$&') }}*\n\n💸 Old price: ₹{{ $('Compare Prices').first().json.lastPrice }}\n✅ New price: ₹{{ $('Compare Prices').first().json.currentPrice }}\n🎉 You save: ₹{{ $('Compare Prices').first().json.dropAmount }} \\({{ $('Compare Prices').first().json.dropPercent }}% off\\)\n\n🛒 [Buy now]({{ $('Compare Prices').first().json.url }})\n",
+        "additionalFields": {
+          "disable_web_page_preview": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "6d8a66cd-31e6-4893-853c-db9f53a05a42",
+      "name": "Send Telegram Alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        192,
+        1152
+      ],
+      "webhookId": "00203321-c346-496f-8b98-78672021e932",
+      "credentials": {
+        "telegramApi": {
+          "id": "nZKraHW52fc6LGbp",
+          "name": "Telegram account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Fetch Product Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Product Page": {
+      "main": [
+        [
+          {
+            "node": "Extract Price",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Price": {
+      "main": [
+        [
+          {
+            "node": "Read Last Price (Sheets)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Last Price (Sheets)": {
+      "main": [
+        [
+          {
+            "node": "Compare Prices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compare Prices": {
+      "main": [
+        [
+          {
+            "node": "Price Dropped?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Price Dropped?": {
+      "main": [
+        [
+          {
+            "node": "Update Price in Sheets",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send Telegram Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "6fc169c7-7b83-41a3-aa56-c9e13c2cfcbd",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "fbec0f0e7b7328acb32f2bfb687029bc0f7396bac7e039c36569093c47e9e09d"
+  },
+  "id": "uiBamfu1uLs1jcwq",
+  "tags": []
+}
