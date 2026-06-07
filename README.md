@@ -2,13 +2,9 @@
 
 Get a Telegram message the moment a product price drops. This workflow scrapes any product URL on a schedule, compares it against the last price stored in Google Sheets, and fires a Telegram alert on a drop.
 
-> ✅ **100% free-tier compatible.** No `$vars`, no paid n8n plan needed. All config lives in a single **Config (Set) node** at the top of the workflow.
-
----
 
 ## How it works
 
-```
 Schedule Trigger (every 6h)
         ↓
 Config (Set node)    →  PRODUCT_URL, SHEET_ID, TELEGRAM_CHAT_ID
@@ -28,19 +24,17 @@ Price Dropped? (IF)
 Update Sheets  +  Send Telegram Alert  (parallel)
 ```
 
----
-
 ## What you'll receive on Telegram
 
 ```
-🔔 Price Drop Alert!
+ Price Drop Alert!
 
-📦 Sony WH-1000XM5 Wireless Headphones
-💸 Old price: ₹24990
-✅ New price: ₹19999
-🎉 You save: ₹4991 (19.9% off)
+ Sony WH-1000XM5 Wireless Headphones
+ Old price: ₹24990
+ New price: ₹19999
+ You save: ₹4991 (19.9% off)
 
-🛒 Buy now → [product link]
+ Buy now → [product link]
 
 Tracked by your n8n Price Bot
 ```
@@ -186,15 +180,15 @@ The Config node holds one URL. To track several products:
 Edit the `text` field in **Send Telegram Alert**. Telegram uses **MarkdownV2**:
 
 ```
-🔔 *Price Drop Alert\!*
+ *Price Drop Alert\!*
 
-📦 *{{ productName }}*
+ *{{ productName }}*
 
-💸 Old price: ₹{{ lastPrice }}
-✅ New price: ₹{{ currentPrice }}
-🎉 You save: ₹{{ dropAmount }} \({{ dropPercent }}% off\)
+ Old price: ₹{{ lastPrice }}
+ New price: ₹{{ currentPrice }}
+ You save: ₹{{ dropAmount }} \({{ dropPercent }}% off\)
 
-🛒 [Buy now]({{ url }})
+ [Buy now]({{ url }})
 
 _Tracked by your n8n Price Bot_
 ```
@@ -210,35 +204,12 @@ _Tracked by your n8n Price Bot_
 
 | Site | Status |
 |---|---|
-| Amazon India | ✅ Supported |
-| Flipkart | ✅ Supported |
-| Any site showing ₹ | ✅ Generic fallback |
+| Amazon India | Supported |
+| Flipkart | Supported |
+| Any site showing ₹ | Generic fallback |
 
 To add another site, open the **Extract Price** Code node and add a pattern array following the existing examples.
 
----
-
-## Troubleshooting
-
-**"Could not extract price" error**
-The site likely renders prices via JavaScript. The HTTP Request node only fetches static HTML. Fix: replace the HTTP Request node with a scraping service like [Browserless](https://browserless.io) or [ScrapingBee](https://scrapingbee.com).
-
-**Telegram message not delivered**
-- Check the Bot Token in the n8n Telegram credential.
-- Make sure you sent at least one message to the bot before fetching the Chat ID.
-- For channels/groups, the bot must have Admin + posting rights.
-- Re-visit `https://api.telegram.org/botYOUR_TOKEN/getUpdates` to verify the Chat ID.
-
-**Sheet not updating**
-- Tab must be named `PriceLog` exactly (case-sensitive).
-- Google Sheets credential needs edit access.
-- The `url` column is the match key — it must be populated on first run.
-
-**Workflow not running on schedule**
-- Toggle must be set to **Active**.
-- Self-hosted n8n must stay running — use Docker or PM2.
-
----
 
 ## Node-by-node reference
 
@@ -253,26 +224,8 @@ The site likely renders prices via JavaScript. The HTTP Request node only fetche
 | 7 | Price Dropped? | if | Branches on drop = true/false |
 | 8 | Update Price in Sheets | googleSheets | Saves new price + timestamp |
 | 9 | Send Telegram Alert | telegram | Sends formatted Telegram message |
-
 ---
 
-## File structure
 
-```
-price-tracker-telegram/
-├── price-tracker-telegram-workflow.json   ← import into n8n
-└── README.md                              ← this file
-```
-
----
-
-## Tech stack
-
-- **n8n** — workflow automation (free tier)
-- **Google Sheets** — price history storage
-- **Telegram Bot API** — instant alert delivery
-- **HTTP Request + Code node** — scraping and price parsing
-
----
 
 *Built with n8n free tier. No paid features used.*
